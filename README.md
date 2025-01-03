@@ -1,93 +1,135 @@
-# Long-term Memory Using Entity and Chromadb
-The model is structured with a non-parametric memory that stores important elements of a user query as entities in ChromaDB, and retrieves relevant memories based on the user query.
+# Topic 2: Long Term Memory Using SQL Language Models
 
-## Installation
-Tested on Windows 10 with Python 3.9 and CUDA version 11.6 or higher. And NVIDIA GeForce RTX 3090, NVIDIA GeForce RTX 2080 Ti.
-The NVIDIA GeForce RTX 3090 alone is not working due to an out of memory error.
+This is an implementation of a chatbot that uses a team of language models (agents) that generate SQL commands that are executed to store and retrieve memories into and from an external SQL database.
 
-The mem0ai library on GitHub is continuously updated, so only version 0.1.7 is allowed. 
-Then, go to the mem0ai folder installed in the Anaconda virtual environment and replace the files mem0/memory/main.py, mem0/configs/prompts.py, mem0/embeddings/bge_base.py, mem0/vector_stores/chroma.py, and mem0/llms/phi3.py with the submitted files.
-After that, to recognize the replaced LLM, go to mem0/utils/factory.py and add "phi3": "mem0.llms.phi3.Phi3LLM" to the ‘provider_to_class’ dictionary.
+## Latest Weights
 
-How to Install GPU-Enabled llama-cpp-python (Visual Studio 2019 and CMake must be installed beforehand):
-1. set FORCE_CMAKE=1 && set CMAKE_ARGS=-DLLAMA_CUBLAS=on
-If DLLAMA_CUBLAS doesn’t work, use the following alternative: set FORCE_CMAKE=1 && set CMAKE_ARGS=-DGGML_CUDA=on
-2. pip install llama-cpp-python --force-reinstall --upgrade --no-cache-dir  or  pip install llama-cpp-python --force-reinstall --upgrade --no-cache-dir -vv
-Installing the GPU version may take about 2 hours.
+Latest (LoRA) weights for the storage language model:
+sql_memory/sql_storage_200(0.985)/
 
-For all other dependencies, you can install them using the requirements submitted.
+*The base model is "google/gemma-2-2b-it", the tokenizer inside the checkpoint is from this model
 
-## Demo
-The attached demo folder's 004.db (demo/004.db) is needed to check the user's personal information, and the 004 folder (demo/004) is the chromadb folder that stores the memory content. (The attached folder contains an empty database, provided only to indicate its location.)
-1. After running server.py, execute the client.py file once the execution is complete.
-2. If you enter a user ID, the chat session will start immediately if the user is already registered. At this point, the 004.db data from the demo folder that was created in advance should be available. (At this time, the name of the database is the user's ID, and if the user is not registered, registration will not occur at this time. You can register it separately using the save_base function in server.py.)
-3. During the conversation, enter dialogue sentences and press enter. (To store user information, only sentences related to diseases, symptoms, and medications should be entered. Any content unrelated to these topics will not be saved.)
-4. To exit the conversation session, type the keyword "Exit" and press enter.
+*URL: https://huggingface.co/google/gemma-2-2b-it/tree/main
 
-## Server Client Setup
-On the server side, run [server.py]. This will start a server that listens for incoming connections.
-On the client side, run [client.py]. This will connect to the server and start a dialogue session.
-Websocket url = ‘ws://localhost:8000/LLM’ 
+## Environment
 
+Tested on Windows 10 and Ubuntu 24 with Python 3.12 with a single RTX 3080 TI / RTX 4090
+(To run the training code and any experiments involving Gemma 9B may require at least 24GB of VRAM i.e. RTX 4090)
+
+## Setup Instructions
+
+Create a new conda environment
+
+[`pip install -r requirements.txt`]
+
+## Chatbot With Long Term Memory Demo
+
+Run [`interact2.py`] to start a dialogue session
+
+Engage in dialogue with the chatbot (but do not tell the chatbot your name: this needs to be fixed at its default for now)
+
+As you converse with the chatbot, language models will save important facts to the SQL database automatically.
+
+To exit the dialogue session and save the stored information enter the keyword "bye" and hit enter.
+
+To delete the stored information and reset the database enter the keyword "reset" and hit enter.
+
+If you entered "bye" to exit the session, the next time you run [`interact2.py`] it will load the stored information from the database and you can check whether it remembers all the facts you told it.
+
+## Evaluation
+
+To evaluate the performance of the SQL language models in storing and retrieving memories on the MSC dataset:
+
+1. Run [`eval_without_judge.py`]. This will generate predicted answers and store them in the file ['eval_record.txt'].
+
+2. Run [`eval_LLM_judge.py`]. This will calculate the LLM judge score for the predicted answers.
+
+## Training
+
+Run [`train(C3)singlelines_reward_overlapping_S.py`] to finetune the storage language model using reinforcement learning.
+
+This will generate checkpoints for the storage language model every 50 iterations ['sql_storage_i']. 
+
+Currently the best performing model appears to be the one saved at the 200th iteration (already saved in this folder as ['sql_storage_200(S0.985)']).
 
 ## Concept
 
-- A small language model (phi-3 3.8B) compresses information from the user's words in the conversation and stores it as a vector embedding in chromadb or updates the memory if it already exists.
-- Older memories are deleted using the number of mentions and the mentioned date along the Ebbinghaus' forgetting curve.
-- Relevant memories are retrieved from the database using cosine similarity between embeddings of of the memories and the user's query
-- Currently, the queries are relatively simple, but we are implementing Memorag in preparation for when more complex queries need to be used in the future.
-
-### RAG-BASED MEMORY OVERALL STRUCTURE
-<img src="./images/RAG_based_memory_overview.png"/>
-
-### GRAPH CHANGES BASED ON THE NUMBER OF MENTIONS ON DIFFERENT DATES
-citation: https://www.rebuildingeducation.com/the-algorithm-that-saves-lives/
-<p align="center">
-<img src="./images/forget_rep.png"/> 
-<img src="./images/forgetting_memory.png" width="600" height="200" /> 
-</p>
+Non-Parametric Memory: LM SQL Storage/Retrieval Training using Reinforcement Learning
+- Setup a team of small language models (Gemma 2B), one to store information from dialogue into a SQL table, one to retrieve information from SQL table
+- Trained the two models on reward respecting subtasks using reinforcement learning to store and retrieve more relevant information
+- Tested the resulting models (using Mistral 7B for generation) on Multi-Session Chat dataset and were able to increase accuracy from 0.56 to 0.76
 
 
-### CHANGE IN GRAPH SLOPE WITH REPETITION
-<p align="center">
-<img src="./images/graph_change.png"/>
-</p>
+![Alt text](./images/SQL_memory_diagram.png)
 
-### RAG-BASED MEMORY PROCESS WITH EXAMPLE
-<img src="./images/RAG_based_memory_process.png"/>
+Storage LM
 
-### AI ANSWER OF EXAMPLE
+Small language model stores information about user and AI assistant from dialogue into SQL table
 
-<p align="center">
-<img src="./images/ai_answer.png" width="650" height="200"/>
-</p>
+Retrieval LM
 
-### __Dataset__   
-1. Medialog dataset (num 100) 
-https://huggingface.co/datasets/UCSD26/medical_dialog/blob/main/medical_dialog.py  
-2. MSC-self-instruct dataset (num 100)  
-https://huggingface.co/datasets/MemGPT/MSC-Self-Instruct
+Small language model retrieves information about user and AI assistant from SQL table when necessary to answer user query
 
-### EXTRACT ENTITY CONFUSION MATRIX  
-<p align="center">
-<img src="./images/extract_entity_confusion_matrix.png" width="450" height="200"/>
-</p>
+The storage language model generates SQL queries to store information from dialogue into a SQL table:
+![Alt text](./images/storage_example.png)
 
-### RESULTS GENERATED DURING THE PROCESS
-<img src="./images/example.png"/>
+The retrieval language model generates SQL queries to retrieve information from the SQL table:
+![Alt text](./images/retrieval_example.png)
 
+Example SQL table after updating using the storage language model:
+![Alt text](./images/sql_table_example.png)
 
-### __Dataset__ 
-1. harry potter (HARRY POTTER AND THE CHAMBER OF SECRETS)
-https://github.com/qhjqhj00/MemoRAG/blob/main/examples/harry_potter.txt
-2. Create complex queries that require a combination of fragments and answers using chatgpt  
-Example: How is 'prejudice' addressed in this book?, What's the book's main theme? 
+### Dataset
 
-### RELATIONSHIP BETWEEN ORIGINAL QUERY, CONTEXT, AND DERIVED QUERIES
-<img src="./images/relation.png"/>
+The dataset used for training and evaluation is the MSC-Self-Instruct dataset:
+![Alt text](./images/mscdataset2.png)
 
-### COMPARISON OF QUERY SEARCH AND ANSWER, DERIVED QUERY SEARCH AND ANSWER, AND MEMORAG ANSWER EXAMPLE
-<img src="./images/derived_query_example.png"/>
+MSC-Self-Instruct
 
-RAG-BASED MEMORY SYSTEM: GUI OVERVIEW
-<img src="./images/GUI_OVERVIEW.png"/>
+- 5 Dialogue sessions per multi-session chat + Q/A pair to test memory
+- 500 multi-session chats total
+- Evaluation: LLM Judge vs GT answer
+
+URL: https://huggingface.co/datasets/MemGPT/MSC-Self-Instruct
+
+### Training
+
+Training the storage language model on a reward respecting subtask using reinforcement learning:
+
+![Alt text](./images/storage_training.png)
+
+The storage language model is trained to maximize the likelihood of generating SQL queries to store only the information pertaining to the speaker in question.
+This is done by generating the ground truth from a prompt that includes only the line for the speaker in question.
+
+Training the retrieval language model on a reward respecting subtask using reinforcement learning:
+
+![Alt text](./images/retrieval_training.png)
+
+The retrieval language model is trained to maximize the likelihood of the SQL queries it generates only in the case that it results in the final answer being correct.
+Then a bonus is added if the number of fields retrieved falls within the desired range.
+
+### Evaluation
+
+Qualitative Results
+
+Storage LM before and after finetuning:
+
+![Alt text](./images/results_qual_storage.png)
+
+Before finetuning the storage LM confuses the records for the two speakers resulting in incorrect entries.
+After finetuning the storage LM is able to correctly distinguish which record to update.
+
+Retrieval LM before and after finetuning:
+
+![Alt text](./images/results_qual_retrieval.png)
+
+Before finetuning the retrieval LM does not retrieve a sufficient number of fields to answer the query.
+After finetuning the retrieval LM retrieves enough fields to correctly answer the query.
+
+Quantitative Results
+
+![Alt text](./images/results_quant.png)
+
+As judged by the LLM judge (Mistral 7B) the final answer after storing all the information from the dialogue history into the SQL table using the storage LM and retrieving using the retrieval LM,
+was correct only 56% of the time on a held-out test set of 50 questions using just the baseline Gemma 2 9B model for storage and retrieval.
+Using our finetuned models the accuracy increased to 76% on the same test set.
